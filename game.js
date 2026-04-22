@@ -634,14 +634,6 @@ const layout = {
  */
 
 /**
- * @typedef {object} DepartAnim
- * @property {'depart'} kind
- * @property {number} slot
- * @property {number} t0
- * @property {number} dur
- */
-
-/**
  * @typedef {object} ExitRunAnim
  * @property {'exitRun'} kind
  * @property {number} catId
@@ -653,7 +645,7 @@ const layout = {
  * @property {number} slot
  */
 
-/** @typedef {MoveAnim|TreatAnim|DepartAnim|ExitRunAnim} Anim */
+/** @typedef {MoveAnim|TreatAnim|ExitRunAnim} Anim */
 
 const game = {
   /** @type {BoardCat[]} */
@@ -825,22 +817,12 @@ function onTreatAnimComplete(now) {
   const slot = a.slot;
   const qc = game.queue[slot];
   game.anim = null;
-  if (qc && qc.need <= 0) {
-    game.anim = { kind: 'depart', slot, t0: now, dur: 420 };
-    return;
-  }
-  tryAutoFeed();
-}
 
-/**
- * @param {number} now
- */
-function onDepartAnimComplete(now) {
-  const a = game.anim;
-  if (!a || a.kind !== 'depart') return;
-  if (now < a.t0 + a.dur) return;
-  game.queue[a.slot] = null;
-  game.anim = null;
+  // Leave immediately after receiving the last required treat.
+  if (qc && qc.need <= 0) {
+    game.queue[slot] = null;
+  }
+
   tryAutoFeed();
   processPendingExit();
   checkEnd();
@@ -853,7 +835,6 @@ function tickAnims(now) {
   if (game.anim?.kind === 'move') finishMoveAnim(now);
   else if (game.anim?.kind === 'exitRun') finishExitRunAnim(now);
   else if (game.anim?.kind === 'treat') onTreatAnimComplete(now);
-  else if (game.anim?.kind === 'depart') onDepartAnimComplete(now);
 }
 
 function checkEnd() {
@@ -871,6 +852,12 @@ function checkEnd() {
   }
   const full = game.queue.every((q) => q !== null);
   if (!full) return;
+
+  // Do not evaluate loss while a treat is currently being consumed,
+  // or when a cat is already effectively done and about to leave.
+  if (game.anim?.kind === 'treat') return;
+  if (game.queue.some((q) => q && q.need <= 0)) return;
+
   const front = game.treats[0];
   let any = false;
   for (const q of game.queue) {
@@ -1157,17 +1144,6 @@ function draw(now) {
     ctx.arc(px, py, 12 * (1 - u * 0.3), 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-  }
-
-  if (game.anim?.kind === 'depart') {
-    const a = game.anim;
-    const u = Math.min(1, (now - a.t0) / a.dur);
-    const qw2 = (W - 48) / QUEUE_SLOTS;
-    const x = 24 + a.slot * qw2;
-    const y = qTop + 28;
-    ctx.fillStyle = `rgba(255,255,255,${0.15 * (1 - u)})`;
-    roundRect(ctx, x, y, qw2 - 8, L.qH - 44, 10);
-    ctx.fill();
   }
 
   if (game.status === 'won' || game.status === 'lost') {
